@@ -49,8 +49,12 @@ void panico(char* m)
     sgl_log("%s\n", m);
     exit(EXIT_FAILURE);
 }
+#ifndef min
 #define min(a, b) ( (a) < (b) ) ? a : b
+#endif
+#ifndef max
 #define max(a, b) ( (a) > (b) ) ? a : b
+#endif
 
 // Funcion extra de ayuda
 int sb_find(int* a, int e)
