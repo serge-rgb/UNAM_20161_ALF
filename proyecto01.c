@@ -49,11 +49,18 @@ void panico(char* m)
     sgl_log("%s\n", m);
     exit(EXIT_FAILURE);
 }
+
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
 #ifndef min
-#define min(a, b) ( (a) < (b) ) ? a : b
+#define min(a, b) (( (a) < (b) ) ? a : b)
 #endif
 #ifndef max
-#define max(a, b) ( (a) > (b) ) ? a : b
+#define max(a, b) (( (a) > (b) ) ? a : b)
 #endif
 
 // Funcion extra de ayuda
