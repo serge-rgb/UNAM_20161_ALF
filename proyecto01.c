@@ -218,7 +218,7 @@ int main(int argc, char** argv)
 
                 // Tabla inicialmente en zeros, de estados distinguibles
                 int* distinguibles = (int*) sgl_calloc(MAX_NUM_ESTADOS * MAX_NUM_ESTADOS, sizeof(int));
-#define son_distinguibles(p, q) distinguibles[min(p, q) * MAX_NUM_ESTADOS + max(p, q)]  // Macro util para evitar confusiones..
+#define son_distinguibles(p, q) distinguibles[(min(p, q)) * MAX_NUM_ESTADOS + (max(p, q))]  // Macro util para evitar confusiones..
 
                 // Llenar la tabla distinguiendo entre finales y no finales.
                 for (int qi = 0; qi < sb_count(alcanzables) - 1; ++qi) {
