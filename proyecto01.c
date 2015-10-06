@@ -250,7 +250,7 @@ int main(int argc, char** argv)
                         for (int pi = qi + 1; pi < sb_count(alcanzables); ++pi) {
                             Estado p = alcanzables[pi];
                             Estado q = alcanzables[qi];
-                            if ( !son_distinguibles(q, p) ) {
+                            if ( !son_distinguibles(p, q) ) {
                                 for (int ai = 0; ai < sb_count(alfabeto); ++ai) {
                                     char a = alfabeto[ai];
                                     Estado pa = g_AF[p][a];
