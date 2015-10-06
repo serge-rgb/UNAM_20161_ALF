@@ -1,5 +1,5 @@
 #define LIBSERG_IMPLEMENTATION
-#include "libserg/libserg.h"
+#include "libserg.h"
 
 /**
  *
@@ -49,6 +49,8 @@ void panico(char* m)
     sgl_log("%s\n", m);
     exit(EXIT_FAILURE);
 }
+#define min(a, b) ( (a) < (b) ) ? a : b
+#define max(a, b) ( (a) > (b) ) ? a : b
 
 // Funcion extra de ayuda
 int sb_find(int* a, int e)
