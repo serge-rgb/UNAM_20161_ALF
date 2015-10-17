@@ -49,18 +49,11 @@ void panico(char* m)
     sgl_log("%s\n", m);
     exit(EXIT_FAILURE);
 }
-
-#ifdef min
-#undef min
-#endif
-#ifdef max
-#undef max
-#endif
 #ifndef min
-#define min(a, b) (( (a) < (b) ) ? a : b)
+#define min(a, b) ( (a) < (b) ) ? a : b
 #endif
 #ifndef max
-#define max(a, b) (( (a) > (b) ) ? a : b)
+#define max(a, b) ( (a) > (b) ) ? a : b
 #endif
 
 // Funcion extra de ayuda
@@ -106,11 +99,46 @@ char* finalizar_tabla()
     return mi_alfabeto;
 }
 
+void set_distinguibles(int* tabla, Estado p, Estado q)
+{
+    if ( p == -1  || q == -1 ) {
+        return;
+    }
+    int M = max(p, q);
+    int m = min(p, q);
+    tabla[m * MAX_NUM_ESTADOS + M] = 1;
+}
+
+int get_distinguibles(int* tabla, Estado p, Estado q)
+{
+    /* if ( p == -1 && q == -1 ) { */
+    /*     return 0; */
+    /* } */
+    /* if ( p == -1 || q == -1 ) { */
+    /*     return 0; */
+    /* } */
+    if ( p == q ) {
+        return 0;
+    }
+    /* if ( p == -1 ) { */
+    /*     return g_finales[q]; */
+    /* } else if ( q == -1 ) { */
+    /*     return g_finales[q]; */
+    /* } */
+
+    int M = max(p, q);
+    int m = min(p, q);
+    int res = tabla[m * MAX_NUM_ESTADOS + M];
+
+    return res;
+}
+
 int main(int argc, char** argv)
 {
 
     static char* test_fa [] = {
         "af0.csv",
+        "af1.csv",
     };
 
 
@@ -118,9 +146,11 @@ int main(int argc, char** argv)
         int64_t read = 0;
         // -- Nuevo archivo:
         // Inicializar el automata finito para dejarlo en valores invalidos, antes de cargar el archivo.
-        memset(g_AF, -1, sizeof(int)*MAX_NUM_ESTADOS * MAX_ALFABETO);
+        memset(g_AF, 0, sizeof(int)*MAX_NUM_ESTADOS * MAX_ALFABETO);
         memset(g_alfabeto, 0, NUM_ASCII_CHARS);
         memset(g_finales, -1, sizeof(int) * MAX_NUM_ESTADOS);
+
+        sgl_log("\n\n***** Procesando archivo %s *****\n", test_fa[i]);
 
         char* contents = sgl_slurp_file(test_fa[i], &read);
         if (read) {
@@ -130,6 +160,10 @@ int main(int argc, char** argv)
                 // Ahora interpretamos la linea actual para llenar nuestra tabla.
                 // Primera linea, llenar los contadores
                 for (int32_t line_i = 0; line_i < num_lines; ++line_i) {
+                    if ( lines[line_i][0] == '#' ) {
+                        // Es un comentario.
+                        continue;
+                    }
                     int parse_state = PARSE_estado;
                     char** toks = sgl_tokenize(lines[line_i], ",");
                     int estado = -1;
@@ -225,7 +259,6 @@ int main(int argc, char** argv)
 
                 // Tabla inicialmente en zeros, de estados distinguibles
                 int* distinguibles = (int*) sgl_calloc(MAX_NUM_ESTADOS * MAX_NUM_ESTADOS, sizeof(int));
-#define son_distinguibles(p, q) distinguibles[(min(p, q)) * MAX_NUM_ESTADOS + (max(p, q))]  // Macro util para evitar confusiones..
 
                 // Llenar la tabla distinguiendo entre finales y no finales.
                 for (int qi = 0; qi < sb_count(alcanzables) - 1; ++qi) {
@@ -233,13 +266,12 @@ int main(int argc, char** argv)
                         Estado p = alcanzables[pi];
                         Estado q = alcanzables[qi];
                         if (g_finales[q] != g_finales[p]) {
-                            son_distinguibles(p, q) = 1;
-                            sgl_log("%d y %d son dist.\n", p, q);
+                            set_distinguibles(distinguibles, p, q);
+                            assert( get_distinguibles(distinguibles, p, q) == 1 );
+                            assert( get_distinguibles(distinguibles, q, p) == 1 );
+                            sgl_log("%d y %d son distinguibles.\n", p, q);
                         }
                     }
-                }
-                for (int qi = 0; qi < sb_count(alcanzables) ; ++qi) {
-                    son_distinguibles(qi, qi) = 0;
                 }
 
                 // Punto fijo.
@@ -250,13 +282,16 @@ int main(int argc, char** argv)
                         for (int pi = qi + 1; pi < sb_count(alcanzables); ++pi) {
                             Estado p = alcanzables[pi];
                             Estado q = alcanzables[qi];
-                            if ( !son_distinguibles(p, q) ) {
+                            if ( !get_distinguibles(distinguibles, q, p) ) {
                                 for (int ai = 0; ai < sb_count(alfabeto); ++ai) {
                                     char a = alfabeto[ai];
                                     Estado pa = g_AF[p][a];
                                     Estado qa = g_AF[q][a];
-                                    if ( son_distinguibles(pa, qa) ) {
-                                        son_distinguibles(p, q) = 1;
+                                    if ( get_distinguibles(distinguibles, pa, qa) ) {
+                                        set_distinguibles(distinguibles, p, q);
+										assert(get_distinguibles(distinguibles, p, q) == 1);
+										assert(get_distinguibles(distinguibles, q, p) == 1);
+                                        sgl_log("%d y %d son distinguibles.\n", p, q);
                                         // p y q son distinguibles porque d(p, a) y d(q, a) son distinguibles.
                                         fijo = 0;
                                     }
@@ -264,12 +299,9 @@ int main(int argc, char** argv)
                             }
                         }
                     }
-
                 }
 
                 // Ver quienes *no* son distinguibles y crear clases
-
-#define agregar_sin_repetir(c, p) if (!sb_find((c), p)) { sb_push((c), p); }
 
                 int* clases[MAX_NUM_ESTADOS] = { 0 };
                 int clases_c = 0;
@@ -287,26 +319,36 @@ int main(int argc, char** argv)
                     fijo = 1;
                     for (int pi = 0; pi < sb_count(alcanzables); ++pi) {
                         Estado p = alcanzables[pi];
+                        int pertenece_a_clase = 0;
                         // Buscar en las clases de equivalencia para ver si creamos una nueva o agregamos a existente.
-                        int esta_en_clase = 0;
-                        for (int ci = 0; ci < clases_c; ++ci) {
-                            Estado p_clase = clases[ci][0];
-                            if ( !son_distinguibles(p_clase, p) ) {
-                                // Agregar p y q a la clase existente.
-                                if (!sb_find(clases[ci], p)) {
+                        for (int ci = 0; !pertenece_a_clase && ci < clases_c; ++ci) {
+                            if ( sb_find(clases[ci], p) ) {
+                                pertenece_a_clase = 1;
+                            } else {
+                                int distinguible = 0;
+                                // No esta en la clase, ver si es distinguible.
+                                for ( int qi = 0; qi < sb_count(clases[ci]); ++qi ) {
+                                    Estado q = clases[ci][0];
+                                    if ( get_distinguibles(distinguibles, q, p) ) {
+                                        distinguible = 1;
+                                        break;
+                                    }
+                                }
+                                if (!distinguible) {
+                                    // No es distinguible y no esta en esta clase. Agregar.
                                     sb_push(clases[ci], p);
+                                    pertenece_a_clase = 1;
                                     fijo = 0;
                                 }
-                                esta_en_clase = 1;
                             }
                         }
-                        if (!esta_en_clase) {
-                            fijo = 0;
-                            // Crear nueva clase!
+                        if ( !pertenece_a_clase ) {
+                            // Nueva clase
                             int* nueva_clase = NULL;
                             sb_push(nueva_clase, p);
                             // Agregar a esta nueva clase
                             clases[clases_c++] = nueva_clase;
+                            fijo = 0;
                         }
                     }
                 }
@@ -325,7 +367,20 @@ int main(int argc, char** argv)
                     }
                 }
 
-                // Por ultimo, imprimir la nueva funcion de transicion.
+                // Por ultimo, imprimir la nueva funcion de transicion y los que son finales..
+                sgl_log("    ==== Nuevo automata: ====\n");
+
+                sgl_log("Estados: [");
+                for (int ci = 0; ci < clases_c; ++ci) {
+                    sgl_log("q%d", ci+1);
+                    if ( ci != clases_c - 1 ) {
+                        sgl_log(", ");
+                    } else {
+                        sgl_log(", E");
+                    }
+                }
+                sgl_log("]\n");
+
                 for (int ci = 0; ci < clases_c; ++ci) {
                     int* clase = clases[ci];
                     for (int ai = 0; ai < sb_count(alfabeto); ++ai) {
@@ -334,13 +389,37 @@ int main(int argc, char** argv)
                         // Encontrar la clase a la que corresponde.
                         Estado p = clase[0];
                         Estado q = g_AF[p][a];
+
+                        int existe_transicion = 0;
                         for (int di = 0; di < clases_c; ++di) {
                             if (sb_find(clases[di], q)) {
                                 sgl_log("d(q%d, %c) = q%d\n", ci + 1, a, di+1);
+                                existe_transicion = 1;
+                                break;
                             }
                         }
+                        if (!existe_transicion) {
+                            sgl_log("d(q%d, %c) = E\n", ci + 1, a);
+                        }
+                    }
+
+                }
+                sgl_log("Estados finales: [ ");
+                for (int ci = 0; ci < clases_c; ++ci) {
+                    int* clase = clases[ci];
+                    int es_final = 0;
+                    for (int qi = 0; qi < sb_count(clase); ++qi) {
+                        Estado q = clase[qi];
+                        if ( g_finales[q] ) {
+                            es_final = 1;
+                            break;
+                        }
+                    }
+                    if (es_final) {
+                        sgl_log("q%d ", ci+1);
                     }
                 }
+                sgl_log("]\n");
             }
         }
     }
