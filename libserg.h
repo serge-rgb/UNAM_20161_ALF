@@ -40,11 +40,6 @@ extern "C"
 #include <stdint.h>
 #include <stdio.h>
 
-// ====
-// typedefs
-// ====
-
-typedef uint32_t sglBool ;
 
 // ====
 // MACROS
@@ -648,9 +643,9 @@ char* sgl_strip_whitespace(char* in)
     return begin;
 }
 
-sglBool sgl_is_number(char* s)
+int sgl_is_number(char* s)
 {
-    sglBool ok = 1;
+    int ok = 1;
 
     if (*s == '-' || *s == '+') {
         ++s;

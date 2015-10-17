@@ -11,8 +11,9 @@
  * Definicion de un AF en CSV (Comma separated values):
  *
  *      ESTADO, [ENTRADA, ESTADO]+, FINAL
- *  Las líneas no necesariamente tienen el mismo número de columnas.
- *  El primer estado tiene que ser 1
+ *  - Las líneas no necesariamente tienen el mismo número de columnas.
+ *  - El estado inicial tiene que ser 1
+ *  - Se pueden hacer comentarios iniciando la linea con #
  *
  *  Donde:
  *      ESTADO:     numero entero positivo. Denotando el estado. -1 para el estado error, pero no es necesario
@@ -20,9 +21,8 @@
  *      ESTADO:     Resultado de la función de transición
  *      FINAL:      0 para no-final. 1 para final.
  *
- *  La definicion del autómata se deriva de este formato de la siguiente manera:
  *
- *      Alfabeto: Es el conjunto de caracteres ASCII para los que existe una transición
+ * ... nota. uso libserg para
  */
 
 #define MAX_ALFABETO NUM_ASCII_CHARS
@@ -32,9 +32,6 @@
 static int g_AF[MAX_NUM_ESTADOS][MAX_ALFABETO];
 static char g_alfabeto[NUM_ASCII_CHARS];
 static int g_finales[MAX_NUM_ESTADOS];
-
-// Solo un alias para ser mas claro.
-typedef int Estado;
 
 // Maquina de estados para interpretar las lineas de los archivos csv
 enum {
@@ -68,6 +65,8 @@ int sb_find(int* a, int e)
 
 char* finalizar_tabla()
 {
+    // marcar estado error como no-final.
+    g_finales[0] = 0;
     char* mi_alfabeto = NULL;
     int c_alfabeto = 0;
     for(int i = 0; i < NUM_ASCII_CHARS; ++i) {
@@ -99,33 +98,18 @@ char* finalizar_tabla()
     return mi_alfabeto;
 }
 
-void set_distinguibles(int* tabla, Estado p, Estado q)
+void marcar_distinguibles(int* tabla, int p, int q)
 {
-    if ( p == -1  || q == -1 ) {
-        return;
-    }
     int M = max(p, q);
     int m = min(p, q);
     tabla[m * MAX_NUM_ESTADOS + M] = 1;
 }
 
-int get_distinguibles(int* tabla, Estado p, Estado q)
+int son_distinguibles(int* tabla, int p, int q)
 {
-    /* if ( p == -1 && q == -1 ) { */
-    /*     return 0; */
-    /* } */
-    /* if ( p == -1 || q == -1 ) { */
-    /*     return 0; */
-    /* } */
     if ( p == q ) {
         return 0;
     }
-    /* if ( p == -1 ) { */
-    /*     return g_finales[q]; */
-    /* } else if ( q == -1 ) { */
-    /*     return g_finales[q]; */
-    /* } */
-
     int M = max(p, q);
     int m = min(p, q);
     int res = tabla[m * MAX_NUM_ESTADOS + M];
@@ -133,9 +117,22 @@ int get_distinguibles(int* tabla, Estado p, Estado q)
     return res;
 }
 
+// d: tabla de distinguibilidad
+// clase, tam. Arreglo de estados equivalentes.
+// p: Estado candidato.
+int pertenece_a_clase(int* d, int* clase, int tam, int p)
+{
+    for ( int ci = 0; ci < tam; ++ci ) {
+        int q = clase[ci];
+        if ( !son_distinguibles(d, p, q) ) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 int main(int argc, char** argv)
 {
-
     static char* test_fa [] = {
         "af0.csv",
         "af1.csv",
@@ -228,16 +225,16 @@ int main(int argc, char** argv)
                 char* alfabeto = finalizar_tabla();
 
                 // Marcar alcanzables
-                Estado* alcanzables = NULL;
+                int* alcanzables = NULL;
                 sb_push(alcanzables, 1);  // El estado inicial es alcanzable
-                sglBool fijo = 0;
+                int fijo = 0;
                 while ( !fijo ) {
                     fijo = 1;
                     for (int qi = 0; qi < sb_count(alcanzables); ++qi) {
-                        Estado q = alcanzables[qi];
+                        int q = alcanzables[qi];
                         for (int ai = 0; ai < sb_count(alfabeto); ++ai) {
                             char a = alfabeto[ai];
-                            Estado p = g_AF[q][a];
+                            int p = g_AF[q][a];
                             if ( g_AF[q][a] != -1 && !sb_find(alcanzables, p)) {
                                 // Encontramos un nuevo estado alcanzable.
                                 sb_push(alcanzables, p);
@@ -248,7 +245,7 @@ int main(int argc, char** argv)
                 }
                 sgl_log("Alcanzables: ");
                 for (int qi = 0; qi < sb_count(alcanzables); ++qi) {
-                    Estado q = alcanzables[qi];
+                    int q = alcanzables[qi];
                     sgl_log("%d", q);
                     if (qi == sb_count(alcanzables) - 1) {
                         sgl_log("\n");
@@ -260,40 +257,37 @@ int main(int argc, char** argv)
                 // Tabla inicialmente en zeros, de estados distinguibles
                 int* distinguibles = (int*) sgl_calloc(MAX_NUM_ESTADOS * MAX_NUM_ESTADOS, sizeof(int));
 
-                // Llenar la tabla distinguiendo entre finales y no finales.
-                for (int qi = 0; qi < sb_count(alcanzables) - 1; ++qi) {
-                    for (int pi = qi + 1; pi < sb_count(alcanzables); ++pi) {
-                        Estado p = alcanzables[pi];
-                        Estado q = alcanzables[qi];
-                        if (g_finales[q] != g_finales[p]) {
-                            set_distinguibles(distinguibles, p, q);
-                            assert( get_distinguibles(distinguibles, p, q) == 1 );
-                            assert( get_distinguibles(distinguibles, q, p) == 1 );
-                            sgl_log("%d y %d son distinguibles.\n", p, q);
+                int ac = sb_count(alcanzables);
+
+                // Marcar finales y no finales como distinguibles.
+                for ( int pi = 0; pi < ac; ++pi ) {
+                    for ( int qi = pi + 1; qi < ac; ++qi ) {
+                        int p = alcanzables[pi];
+                        int q = alcanzables[qi];
+                        if ( g_finales[p] != g_finales[q] ) {
+                            marcar_distinguibles(distinguibles, p, q);
                         }
                     }
                 }
 
-                // Punto fijo.
+                // Punto fijo: marcar (q,p) como distinguibles si d(p,a) y
+                // d(q,a) son distinguibles para a en el alfabeto
+
                 fijo = 0;
                 while (!fijo) {
                     fijo = 1;
-                    for (int qi = 0; qi < sb_count(alcanzables) - 1; ++qi) {
-                        for (int pi = qi + 1; pi < sb_count(alcanzables); ++pi) {
-                            Estado p = alcanzables[pi];
-                            Estado q = alcanzables[qi];
-                            if ( !get_distinguibles(distinguibles, q, p) ) {
-                                for (int ai = 0; ai < sb_count(alfabeto); ++ai) {
+                    for ( int pi = 0; pi < ac; ++pi ) {
+                        for ( int qi = pi + 1; qi < ac; ++qi ) {
+                            int p = alcanzables[pi];
+                            int q = alcanzables[qi];
+                            if ( !son_distinguibles(distinguibles, p, q) ) {
+                                for ( int ai = 0; ai < sb_count(alfabeto); ++ai ) {
                                     char a = alfabeto[ai];
-                                    Estado pa = g_AF[p][a];
-                                    Estado qa = g_AF[q][a];
-                                    if ( get_distinguibles(distinguibles, pa, qa) ) {
-                                        set_distinguibles(distinguibles, p, q);
-										assert(get_distinguibles(distinguibles, p, q) == 1);
-										assert(get_distinguibles(distinguibles, q, p) == 1);
-                                        sgl_log("%d y %d son distinguibles.\n", p, q);
-                                        // p y q son distinguibles porque d(p, a) y d(q, a) son distinguibles.
+                                    int pa = g_AF[p][a];
+                                    int qa = g_AF[q][a];
+                                    if ( son_distinguibles(distinguibles, pa, qa) ) {
                                         fijo = 0;
+                                        marcar_distinguibles(distinguibles, p, q);
                                     }
                                 }
                             }
@@ -301,122 +295,106 @@ int main(int argc, char** argv)
                     }
                 }
 
-                // Ver quienes *no* son distinguibles y crear clases
-
-                int* clases[MAX_NUM_ESTADOS] = { 0 };
-                int clases_c = 0;
-
-                // Agregar al estado incicial
-                {
-                    int* nueva_clase = NULL;
-                    sb_push(nueva_clase, 1);
-                    clases[clases_c++] = nueva_clase;
+                // Imprimir informacion de estados equivalentes..
+                for ( int pi = 0; pi < ac; ++pi ) {
+                    for ( int qi = pi + 1; qi < ac; ++qi ) {
+                        int p = alcanzables[pi];
+                        int q = alcanzables[qi];
+                        if ( !son_distinguibles(distinguibles, p, q) ) {
+                            sgl_log("%d y %d son equivalentes\n", p, q);
+                        }
+                    }
                 }
 
-                // Punto fijo
+                // Crear clases.
+                int* clases[MAX_NUM_ESTADOS] = { 0 };
+                int num_clases = 0;
+
+                // La primera clase tiene al estado inicial.
+                int* nueva_clase = NULL;
+                sb_push(nueva_clase, 1);
+                clases[num_clases++] = nueva_clase;
+
+                // Iterar por estados. Crear nuevas clases o agregar estados
+                // equivalentes a las clases existentes.
                 fijo = 0;
-                while (!fijo) {
+                while ( !fijo ) {
                     fijo = 1;
-                    for (int pi = 0; pi < sb_count(alcanzables); ++pi) {
-                        Estado p = alcanzables[pi];
-                        int pertenece_a_clase = 0;
-                        // Buscar en las clases de equivalencia para ver si creamos una nueva o agregamos a existente.
-                        for (int ci = 0; !pertenece_a_clase && ci < clases_c; ++ci) {
-                            if ( sb_find(clases[ci], p) ) {
-                                pertenece_a_clase = 1;
-                            } else {
-                                int distinguible = 0;
-                                // No esta en la clase, ver si es distinguible.
-                                for ( int qi = 0; qi < sb_count(clases[ci]); ++qi ) {
-                                    Estado q = clases[ci][0];
-                                    if ( get_distinguibles(distinguibles, q, p) ) {
-                                        distinguible = 1;
-                                        break;
-                                    }
-                                }
-                                if (!distinguible) {
-                                    // No es distinguible y no esta en esta clase. Agregar.
+                    for ( int pi = 0; pi < ac; ++pi ) {
+                        int p = alcanzables[pi];
+                        int pertenece = 0;
+                        for ( int ci = 0; ci < num_clases; ++ci ) {
+                            if ( !sb_find(clases[ci], p) ) {
+                                // Si no esta en la clase...
+                                if ( pertenece_a_clase(distinguibles, clases[ci], sb_count(clases[ci]), p) ) {
+                                    // ... pero pertenece, agregar.
+                                    pertenece = 1;
                                     sb_push(clases[ci], p);
-                                    pertenece_a_clase = 1;
                                     fijo = 0;
                                 }
+                            } else {
+                                pertenece = 1;
                             }
                         }
-                        if ( !pertenece_a_clase ) {
-                            // Nueva clase
-                            int* nueva_clase = NULL;
-                            sb_push(nueva_clase, p);
-                            // Agregar a esta nueva clase
-                            clases[clases_c++] = nueva_clase;
+
+                        if ( !pertenece ) {
+                            int* nc = NULL;
+                            sb_push(nc, p);
+                            clases[num_clases++] = nc;
                             fijo = 0;
                         }
                     }
                 }
-                // Imprimir clases de equivalencia
-                for (int ci = 0; ci < clases_c; ++ci) {
-                    sgl_log("Clase q%d: [", ci+1);
-                    int* clase = clases[ci];
-                    for (int ei = 0; ei < sb_count(clase); ++ei) {
-                        sgl_log ("%d", clase[ei]);
-                        if (ei == sb_count(clase) - 1) {
-                            sgl_log("]\n");
-                        } else {
-                            sgl_log(", ");
 
-                        }
+                // Para hacer las cosas mas legibles, encontrar la clase que tiene el estado error...
+                int clase_error = -1;
+                for ( int ci = 0; ci < num_clases; ++ci ) {
+                    if ( sb_find(clases[ci], 0) ) {
+                        clase_error = ci;
+                        break;
                     }
                 }
 
-                // Por ultimo, imprimir la nueva funcion de transicion y los que son finales..
-                sgl_log("    ==== Nuevo automata: ====\n");
+                // Imprimir el nuevo autómata.
 
-                sgl_log("Estados: [");
-                for (int ci = 0; ci < clases_c; ++ci) {
-                    sgl_log("q%d", ci+1);
-                    if ( ci != clases_c - 1 ) {
-                        sgl_log(", ");
-                    } else {
-                        sgl_log(", E");
+                sgl_log ("    ==== El automata minimizado ====\n");
+
+                for ( int ci = 0; ci < num_clases; ++ci ) {
+                    if ( ci == clase_error ) {
+                        continue;
                     }
-                }
-                sgl_log("]\n");
-
-                for (int ci = 0; ci < clases_c; ++ci) {
                     int* clase = clases[ci];
-                    for (int ai = 0; ai < sb_count(alfabeto); ++ai) {
+                    int p = clase[0];  // Solo nos interesa un elemento, para ver a donde va.
+                    for ( int ai = 0; ai < sb_count(alfabeto); ++ai ) {
                         char a = alfabeto[ai];
-
-                        // Encontrar la clase a la que corresponde.
-                        Estado p = clase[0];
-                        Estado q = g_AF[p][a];
-
-                        int existe_transicion = 0;
-                        for (int di = 0; di < clases_c; ++di) {
-                            if (sb_find(clases[di], q)) {
-                                sgl_log("d(q%d, %c) = q%d\n", ci + 1, a, di+1);
-                                existe_transicion = 1;
+                        int q = g_AF[p][a];
+                        // Encontrar la clase de q;
+                        int transicion = -1;
+                        for ( int cii = 0; cii < num_clases; ++cii ) {
+                            if ( sb_find(clases[cii], q) ) {
+                                transicion = cii;
                                 break;
                             }
                         }
-                        if (!existe_transicion) {
-                            sgl_log("d(q%d, %c) = E\n", ci + 1, a);
+                        // Imprimir.
+                        if ( transicion != clase_error ) {
+                            sgl_log("d(q%d, %c) = q%d\n", ci, a, transicion);
+                        } else {
+                            sgl_log("d(q%d, %c) = E\n", ci, a);
                         }
                     }
-
                 }
+                // Imprimir las transiciones del estado error.
+                for ( int ai = 0; ai < sb_count(alfabeto); ++ai ) {
+                    sgl_log("d(E, %c) = E\n", alfabeto[ai]);
+                }
+
+                // Indicar los estados finales.
                 sgl_log("Estados finales: [ ");
-                for (int ci = 0; ci < clases_c; ++ci) {
-                    int* clase = clases[ci];
-                    int es_final = 0;
-                    for (int qi = 0; qi < sb_count(clase); ++qi) {
-                        Estado q = clase[qi];
-                        if ( g_finales[q] ) {
-                            es_final = 1;
-                            break;
-                        }
-                    }
-                    if (es_final) {
-                        sgl_log("q%d ", ci+1);
+                for ( int ci = 0; ci < num_clases; ++ci ) {
+                    int p = clases[ci][0];
+                    if ( g_finales[p] ) {
+                        sgl_log("q%d ", ci);
                     }
                 }
                 sgl_log("]\n");
