@@ -24,8 +24,7 @@
  */
 
 
-// Esto no es necesario. Pero lo estoy poniendo por si usar malloc sin free
-// quita puntos aunque sea un script =)
+// Esto no es necesario. Pero lo estoy poniendo por si usar malloc sin free =)
 //
 // Buffer, mem_push, mem_init, y mem_deinit crean una zona de memoria para
 // hacer un solo malloc y un solo free para todo el programa.
@@ -365,7 +364,6 @@ int main(int argc, char** argv)
                             if ( !sb_find(clases[ci], p) ) {
                                 // Si no esta en la clase...
                                 if ( !son_distinguibles(distinguibles, clases[ci][0], p) ) {
-                                //if ( pertenece_a_clase(distinguibles, clases[ci], sb_count(clases[ci]), p) ) {
                                     // ... pero pertenece, agregar.
                                     pertenece = 1;
                                     sb_push(clases[ci], p);
@@ -376,7 +374,7 @@ int main(int argc, char** argv)
                             }
                         }
 
-                        if ( !pertenece ) {
+                        if ( !pertenece ) {  // No pertence a alguna clase. Crear una nueva.
                             int* nc = NULL;
                             sb_push(nc, p);
                             clases[num_clases++] = nc;
