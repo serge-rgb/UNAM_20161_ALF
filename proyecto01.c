@@ -1,5 +1,3 @@
-#define LIBSERG_IMPLEMENTATION
-#include "libserg.h"
 
 /**
  *
@@ -22,8 +20,56 @@
  *      FINAL:      0 para no-final. 1 para final.
  *
  *
- * ... nota. uso libserg para
+ *  Regresa el automata minimizado en formato texto.
  */
+
+
+// Esto no es necesario. Pero lo estoy poniendo por si usar malloc sin free
+// quita puntos aunque sea un script =)
+//
+// Buffer, mem_push, mem_init, y mem_deinit crean una zona de memoria para
+// hacer un solo malloc y un solo free para todo el programa.
+#include <assert.h>
+#include <stdlib.h>
+#include <inttypes.h>
+typedef struct Buffer_s {
+    size_t sz;
+    size_t c;
+    void* ptr;
+} Buffer;
+static Buffer g_buffer;
+
+void* mem_push(size_t n)
+{
+    assert (g_buffer.c + n < g_buffer.sz);
+    void* ptr = (uint8_t*)g_buffer.ptr + g_buffer.c;
+    g_buffer.c += n;
+    return ptr;
+}
+static void mem_init()
+{
+    size_t sz = 64 * 1024 * 1024;  // 64 megas para todo el programa..
+
+    g_buffer.sz = sz;
+    g_buffer.c = 0;
+    g_buffer.ptr = calloc(sz, 1);
+    assert(g_buffer.ptr);
+}
+static void mem_deinit()
+{
+    free(g_buffer.ptr);
+}
+
+#define sgl_malloc(a) mem_push(a)
+#define sgl_calloc(a,c) mem_push((a)*(c))
+#define sgl_free(v)
+
+
+// Libserg es un es una biblioteca de utilidades que tengo para tener arreglos
+// de tamaño variable (estilo vectors en C++), threads, funciones de IO y
+// strings. etc...
+#define LIBSERG_IMPLEMENTATION
+#include "libserg.h"
 
 #define MAX_ALFABETO NUM_ASCII_CHARS
 #define MAX_NUM_ESTADOS 64
@@ -53,8 +99,8 @@ void panico(char* m)
 #define max(a, b) ( (a) > (b) ) ? a : b
 #endif
 
-// Funcion extra de ayuda
-int sb_find(int* a, int e)
+// Funcion extra de ayuda.
+static int sb_find(int* a, int e)
 {
     for(int i = 0; i < sb_count((a)); ++i) {
         if (a[i] == e)
@@ -63,49 +109,14 @@ int sb_find(int* a, int e)
     return 0;
 }
 
-char* finalizar_tabla()
-{
-    // marcar estado error como no-final.
-    g_finales[0] = 0;
-    char* mi_alfabeto = NULL;
-    int c_alfabeto = 0;
-    for(int i = 0; i < NUM_ASCII_CHARS; ++i) {
-        if (g_alfabeto[i] == 1) {
-            c_alfabeto++;
-            sb_push(mi_alfabeto, (char)i);
-        }
-    }
-    sgl_log("El alfabeto es: ");
-    for (int i = 0; i < c_alfabeto; ++i) {
-        sgl_log("%c", mi_alfabeto[i]);
-        if (i < c_alfabeto - 1) {
-            sgl_log(", ");
-        } else {
-            sgl_log("\n");
-        }
-    }
-    for (int qi = 0; qi < MAX_NUM_ESTADOS; ++qi) {
-        if (g_finales[qi] >= 0) {
-            for (int ai = 0; ai < sb_count(mi_alfabeto); ++ai) {
-                char a = mi_alfabeto[ai];
-                sgl_log("d(%d, %c) = %d (F=%d)\n",
-                        qi, a,
-                        g_AF[qi][a],
-                        g_finales[qi]);
-            }
-        }
-    }
-    return mi_alfabeto;
-}
-
-void marcar_distinguibles(int* tabla, int p, int q)
+static void marcar_distinguibles(int* tabla, int p, int q)
 {
     int M = max(p, q);
     int m = min(p, q);
     tabla[m * MAX_NUM_ESTADOS + M] = 1;
 }
 
-int son_distinguibles(int* tabla, int p, int q)
+static int son_distinguibles(int* tabla, int p, int q)
 {
     if ( p == q ) {
         return 0;
@@ -117,22 +128,10 @@ int son_distinguibles(int* tabla, int p, int q)
     return res;
 }
 
-// d: tabla de distinguibilidad
-// clase, tam. Arreglo de estados equivalentes.
-// p: Estado candidato.
-int pertenece_a_clase(int* d, int* clase, int tam, int p)
-{
-    for ( int ci = 0; ci < tam; ++ci ) {
-        int q = clase[ci];
-        if ( !son_distinguibles(d, p, q) ) {
-            return 1;
-        }
-    }
-    return 0;
-}
-
 int main(int argc, char** argv)
 {
+    mem_init();
+
     static char* test_fa [] = {
         "af0.csv",
         "af1.csv",
@@ -221,8 +220,47 @@ int main(int argc, char** argv)
                         }
                     }
                 }
-                // Llenar estados error.
-                char* alfabeto = finalizar_tabla();
+
+                // Marcar estado error como no-final.
+                g_finales[0] = 0;
+
+                // Llenar el alfabeto de esta máquina:
+                char* alfabeto = NULL;
+                int c_alfabeto = 0;
+                for(int ai = 0; ai < NUM_ASCII_CHARS; ++ai) {
+                    if (g_alfabeto[ai] == 1) {
+                        c_alfabeto++;
+                        sb_push(alfabeto, (char)ai);
+                    }
+                }
+
+                // Output del alfabeto del automata:
+                sgl_log("El alfabeto es: ");
+                for (int ai = 0; ai < c_alfabeto; ++ai) {
+                    sgl_log("%c", alfabeto[ai]);
+                    if (ai < c_alfabeto - 1) {
+                        sgl_log(", ");
+                    } else {
+                        sgl_log("\n");
+                    }
+                }
+
+
+                // Enseña las transiciones del automata, pero ya estan en el
+                // .csv asi que no vale la pena descomentarlo.
+#if 0
+                for (int qi = 0; qi < MAX_NUM_ESTADOS; ++qi) {
+                    if (g_finales[qi] >= 0) {
+                        for (int ai = 0; ai < sb_count(alfabeto); ++ai) {
+                            char a = alfabeto[ai];
+                            sgl_log("d(%d, %c) = %d (F=%d)\n",
+                                    qi, a,
+                                    g_AF[qi][a],
+                                    g_finales[qi]);
+                        }
+                    }
+                }
+#endif
 
                 // Marcar alcanzables
                 int* alcanzables = NULL;
@@ -326,7 +364,8 @@ int main(int argc, char** argv)
                         for ( int ci = 0; ci < num_clases; ++ci ) {
                             if ( !sb_find(clases[ci], p) ) {
                                 // Si no esta en la clase...
-                                if ( pertenece_a_clase(distinguibles, clases[ci], sb_count(clases[ci]), p) ) {
+                                if ( !son_distinguibles(distinguibles, clases[ci][0], p) ) {
+                                //if ( pertenece_a_clase(distinguibles, clases[ci], sb_count(clases[ci]), p) ) {
                                     // ... pero pertenece, agregar.
                                     pertenece = 1;
                                     sb_push(clases[ci], p);
@@ -357,7 +396,7 @@ int main(int argc, char** argv)
 
                 // Imprimir el nuevo autómata.
 
-                sgl_log ("    ==== El automata minimizado ====\n");
+                sgl_log ("    ==== El automata minimizado (el estado inicial es q0) ====\n");
 
                 for ( int ci = 0; ci < num_clases; ++ci ) {
                     if ( ci == clase_error ) {
@@ -401,5 +440,7 @@ int main(int argc, char** argv)
             }
         }
     }
+
+    mem_deinit();
     return EXIT_SUCCESS;
 }

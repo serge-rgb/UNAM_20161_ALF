@@ -1,4 +1,4 @@
-# Este automata reconoce (b + aa)*
+# Este automata reconoce (aa*)(b*)
 # Nota: Si una transicion no esta definida, se puede omitir
 #   No escribiendola (como en el estado 2)
 #   o usando el estado -1 (como en el estado 3)
